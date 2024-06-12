@@ -31,8 +31,8 @@ impl TaskManager {
                 info!("Serialized Task: {}", task_json);
                 let result: Result<(), redis::RedisError> = con.rpush("tasks", task_json).await;
                 match result {
-                    Ok(_) => info!("Task added: {:?}", task),
-                    Err(e) => error!("Failed to add task: {:?}", e),
+                    Ok(_) => info!("Task successfully added to Redis: {:?}", task),
+                    Err(e) => error!("Failed to add task to Redis: {:?}", e),
                 }
             },
             Err(e) => error!("Failed to get Redis connection: {:?}", e),
@@ -62,7 +62,7 @@ impl TaskManager {
         match self.redis_client.lock().await.get_multiplexed_async_connection().await {
             Ok(mut con) => {
                 let tasks_json: Vec<String> = con.lrange("tasks", 0, -1).await.unwrap();
-                info!("Retrieved tasks JSON: {:?}", tasks_json);
+                info!("Retrieved tasks JSON from Redis: {:?}", tasks_json);
                 let tasks: Vec<Task> = tasks_json.into_iter().map(|task_json| {
                     let task: Task = serde_json::from_str(&task_json).unwrap();
                     task
