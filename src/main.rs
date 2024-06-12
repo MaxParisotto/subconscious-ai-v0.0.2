@@ -8,15 +8,21 @@ use std::sync::Arc;
 use std::thread;
 use warp::Filter;
 use tokio::sync::Mutex;
-use log::{info, debug};
+use log::{info, debug, error};
 use std::fs::OpenOptions;
 use log::LevelFilter;
 use env_logger::{Builder, Target};
+use warp::reject::Reject;
 
 mod task_manager;
 mod core_loop;
 mod subconscious;
 mod llm_client;
+
+#[derive(Debug)]
+struct CustomError;
+
+impl Reject for CustomError {}
 
 #[main]
 async fn main() {
@@ -52,8 +58,11 @@ async fn main() {
         description: "Check actions against Asimov's 3 laws of robotics".to_string(),
         action: "check_asimov_laws".to_string(),
     };
-    task_manager.add_task(persistent_task.clone()).await;
-    info!("Added persistent task: {:?}", persistent_task);
+    if let Err(e) = task_manager.add_task(persistent_task.clone()).await {
+        error!("Failed to add persistent task: {:?}", e);
+    } else {
+        info!("Added persistent task: {:?}", persistent_task);
+    }
 
     // Shared state for API server
     let state = Arc::new(Mutex::new(SomeSharedState::new(task_manager.clone(), llm_client.clone())));
@@ -89,7 +98,10 @@ async fn main() {
                     {
                         let state = state.lock().await;
                         debug!("Adding task to task manager: {:?}", task);
-                        state.task_manager.add_task(task.clone()).await;
+                        if let Err(e) = state.task_manager.add_task(task.clone()).await {
+                            error!("Failed to add task via API: {:?}", e);
+                            return Err(warp::reject::custom(CustomError));
+                        }
                         debug!("Task added to task manager: {:?}", task);
                     }
                     info!("Task added via API: {:?}", task);

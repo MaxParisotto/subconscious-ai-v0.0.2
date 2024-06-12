@@ -24,19 +24,13 @@ impl TaskManager {
         }
     }
 
-    pub async fn add_task(&self, task: Task) {
-        match self.redis_client.lock().await.get_multiplexed_async_connection().await {
-            Ok(mut con) => {
-                let task_json = serde_json::to_string(&task).unwrap();
-                debug!("Serialized Task: {}", task_json);
-                let result: Result<(), redis::RedisError> = con.rpush("tasks", task_json).await;
-                match result {
-                    Ok(_) => info!("Task successfully added to Redis: {:?}", task),
-                    Err(e) => error!("Failed to add task to Redis: {:?}", e),
-                }
-            },
-            Err(e) => error!("Failed to get Redis connection: {:?}", e),
-        }
+    pub async fn add_task(&self, task: Task) -> Result<(), redis::RedisError> {
+        let mut con = self.redis_client.lock().await.get_multiplexed_async_connection().await?;
+        let task_json = serde_json::to_string(&task).unwrap();
+        debug!("Serialized Task: {}", task_json);
+        con.rpush("tasks", task_json).await?;
+        info!("Task successfully added to Redis: {:?}", task);
+        Ok(())
     }
 
     pub async fn execute_tasks(&self) {

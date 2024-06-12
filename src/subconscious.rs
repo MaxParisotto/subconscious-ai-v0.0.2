@@ -1,5 +1,6 @@
 use crate::task_manager::{Task, TaskManager};
 use crate::llm_client::LLMClient;
+use log::{info, error};
 
 pub struct Subconscious {
     task_manager: TaskManager,
@@ -18,12 +19,16 @@ impl Subconscious {
             action: "Perform routine check".to_string(),
         };
 
-        self.task_manager.add_task(routine_task).await;
+        if let Err(e) = self.task_manager.add_task(routine_task).await {
+            error!("Failed to add routine task: {:?}", e);
+        } else {
+            info!("Routine task added.");
+        }
 
         // Example of using the llm_client
         match self.llm_client.interpret_input("Example prompt").await {
-            Ok(response) => println!("LLM response: {}", response),
-            Err(e) => println!("Error getting LLM response: {}", e),
+            Ok(response) => info!("LLM response: {}", response),
+            Err(e) => error!("Error getting LLM response: {}", e),
         }
     }
 }
