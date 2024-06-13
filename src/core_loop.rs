@@ -30,19 +30,19 @@ pub async fn core_loop(subconscious: Arc<Mutex<Subconscious>>) {
 
             info!("Checking Redis connection...");
             match subconscious.task_manager.check_redis_connection().await {
-                Ok(_) => info!("{}", "Redis connection: OK".green()),
-                Err(e) => info!("{}", format!("Redis connection failed: {:?}", e).red()),
+                Ok(_) => println!("{}", "Redis connection: OK".green()),
+                Err(e) => println!("{}", format!("Redis connection failed: {:?}", e).red()),
             }
 
             info!("Checking LLM connection...");
             match subconscious.llm_client.check_llm_connection().await {
-                Ok(_) => info!("{}", "LLM connection: OK".green()),
-                Err(e) => info!("{}", format!("LLM connection failed: {:?}", e).red()),
+                Ok(_) => println!("{}", "LLM connection: OK".green()),
+                Err(e) => println!("{}", format!("LLM connection failed: {:?}", e).red()),
             }
         }
     });
 
     let subconscious = subconscious.lock().await;
-    info!("Processing tasks...");
+    debug!("Processing tasks...");
     subconscious.process_tasks().await;
 }

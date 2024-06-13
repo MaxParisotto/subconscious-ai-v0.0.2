@@ -1,6 +1,6 @@
 use crate::task_manager::{TaskManager, Task, TaskStatus};
 use crate::llm_client::LLMClient;
-use log::info;
+use log::{info, debug}; // Added `debug` here
 
 pub struct Subconscious {
     pub task_manager: TaskManager,
@@ -26,7 +26,7 @@ impl Subconscious {
     }
 
     pub async fn process_tasks(&self) {
-        info!("Processing tasks...");
+        debug!("Processing tasks...");
         self.task_manager.execute_tasks().await;
     }
 }
