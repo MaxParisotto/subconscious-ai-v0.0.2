@@ -1,13 +1,13 @@
 use colored::*;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use std::error::Error;
+use anyhow::Error; // Use anyhow::Error
 
 #[derive(Debug, Serialize)]
 struct LLMInput {
-   model: String,
-   prompt: String,
-   stream: bool,
+    model: String,
+    prompt: String,
+    stream: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -51,7 +51,7 @@ impl LLMClient {
         }
     }
 
-    pub async fn interpret_input(&self, input: &str) -> Result<String, Box<dyn Error>> {
+    pub async fn interpret_input(&self, input: &str) -> Result<String, Error> {
         let payload = LLMInput {
             model: "llama3".to_string(),
             prompt: input.to_string(),
@@ -71,11 +71,11 @@ impl LLMClient {
             println!("LLM response: {}", llm_output.response);
             Ok(llm_output.response)
         } else {
-            Err(format!("LLM endpoint returned status: {} - {}", response.status(), response.text().await?).into())
+            Err(anyhow::anyhow!("LLM endpoint returned status: {} - {}", response.status(), response.text().await?))
         }
     }
 
-    pub async fn check_llm_connection(&self) -> Result<(), Box<dyn Error>> {
+    pub async fn check_llm_connection(&self) -> Result<(), Error> {
         let show_url = self.url.replace("generate", "show");
         println!("Checking LLM connection to: {}", &show_url);
 
@@ -97,8 +97,12 @@ impl LLMClient {
             println!("Quantization Level: {}", model_info.details.quantization_level);
             Ok(())
         } else {
-            Err(format!("LLM endpoint returned status: {} - {}", response.status(), response.text().await?).into())
+            Err(anyhow::anyhow!("LLM endpoint returned status: {} - {}", response.status(), response.text().await?))
         }
+    }
+
+    pub async fn send_message(&self, message: &str) -> Result<String, Error> {
+        self.interpret_input(message).await
     }
 
     pub fn change_model(&self, model: &str) {

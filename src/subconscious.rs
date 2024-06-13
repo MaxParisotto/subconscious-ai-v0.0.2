@@ -6,7 +6,7 @@ use std::time::Instant;
 pub struct Subconscious {
     pub task_manager: TaskManager,
     pub llm_client: LLMClient,
-    pub last_logged: Instant,
+    last_logged: Instant,
 }
 
 impl Subconscious {
@@ -31,8 +31,21 @@ impl Subconscious {
         Ok(())
     }
 
+    pub async fn define_task_from_llm(&self, llm_response: &str) -> Result<(), Box<dyn std::error::Error>> {
+        let new_task = Task {
+            description: "Defined by LLM".to_string(),
+            action: llm_response.to_string(),
+            status: TaskStatus::Pending,
+            is_permanent: false,
+        };
+
+        self.task_manager.add_task(new_task).await?;
+        info!("Task defined by LLM added.");
+        Ok(())
+    }
+
     pub async fn process_tasks(&mut self) {
-        if Instant::now().duration_since(self.last_logged).as_secs() >= 1 {
+        if self.last_logged.elapsed().as_secs() >= 10 {
             debug!("Processing tasks...");
             self.last_logged = Instant::now();
         }

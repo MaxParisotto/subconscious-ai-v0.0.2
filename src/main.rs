@@ -13,6 +13,7 @@ use std::fs::OpenOptions;
 use log::LevelFilter;
 use env_logger::{Builder, Target};
 use warp::reject::Reject;
+use anyhow::Error; // Use anyhow::Error
 
 mod task_manager;
 mod core_loop;
@@ -141,7 +142,7 @@ async fn main() {
 
             let status_route = warp::path("status")
                 .and(warp::get())
-                .and(state_filter)
+                .and(state_filter.clone())
                 .and_then(|state: Arc<Mutex<SomeSharedState>>| async move {
                     let state = state.lock().await;
                     let status = state.get_status();
@@ -149,7 +150,13 @@ async fn main() {
                     Ok::<_, warp::Rejection>(warp::reply::json(&status))
                 });
 
-            let routes = hello_route.or(get_tasks).or(add_task).or(validate_task).or(change_model).or(status_route);
+            let chat_route = warp::path("chat")
+                .and(warp::post())
+                .and(warp::body::json())
+                .and(state_filter)
+                .and_then(handle_chat);
+
+            let routes = hello_route.or(get_tasks).or(add_task).or(validate_task).or(change_model).or(status_route).or(chat_route);
 
             // Combine routes and serve
             warp::serve(routes)
@@ -187,5 +194,26 @@ impl SomeSharedState {
     fn get_status(&self) -> String {
         // Return detailed status of the program
         format!("Tasks: {:?}, LLM Client: {:?}", self.task_manager, self.llm_client)
+    }
+}
+
+#[derive(serde::Deserialize)]
+struct ChatMessage {
+    message: String,
+}
+
+async fn handle_chat(message: ChatMessage, state: Arc<Mutex<SomeSharedState>>) -> Result<impl warp::Reply, warp::Rejection> {
+    let state = state.lock().await;
+    match state.llm_client.send_message(&message.message).await {
+        Ok(response) => {
+            state.task_manager.add_task(Task {
+                description: "Task defined by LLM".to_string(),
+                action: response.clone(),
+                status: TaskStatus::Pending,
+                is_permanent: false,
+            }).await.unwrap();
+            Ok(warp::reply::json(&serde_json::json!({ "response": response })))
+        }
+        Err(e) => Ok(warp::reply::json(&serde_json::json!({ "error": e.to_string() }))),
     }
 }
