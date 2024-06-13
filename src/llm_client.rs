@@ -5,9 +5,9 @@ use std::error::Error;
 
 #[derive(Debug, Serialize)]
 struct LLMInput {
-    model: String,
-    prompt: String,
-    stream: bool,
+   model: String,
+   prompt: String,
+   stream: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
