@@ -26,4 +26,9 @@ impl Subconscious {
         }
 
         // Example of using the llm_client
-        match self.llm_client.interpret_input("Example pro
+        match self.llm_client.interpret_input("Example prompt").await {
+            Ok(response) => info!("LLM response: {}", response),
+            Err(e) => error!("Error getting LLM response: {}", e),
+        }
+    }
+}
