@@ -1,5 +1,5 @@
 use tokio::main;
-use crate::task_manager::{Task, TaskManager};
+use crate::task_manager::{Task, TaskManager, TaskStatus};
 use crate::core_loop::core_loop;
 use crate::subconscious::Subconscious;
 use crate::llm_client::LLMClient;
@@ -51,12 +51,14 @@ async fn main() {
     let task_manager = TaskManager::new(&redis_url);
     let llm_client = LLMClient::new(&llm_url);
 
-    let subconscious = Subconscious::new(task_manager.clone(), llm_client.clone());
+    let subconscious = Arc::new(Mutex::new(Subconscious::new(task_manager.clone(), llm_client.clone())));
 
     // Add the persistent task at startup
     let persistent_task = Task {
         description: "Check actions against Asimov's 3 laws of robotics".to_string(),
         action: "check_asimov_laws".to_string(),
+        status: TaskStatus::Pending,
+        is_permanent: true,
     };
     if let Err(e) = task_manager.add_task(persistent_task.clone()).await {
         error!("Failed to add persistent task: {:?}", e);
@@ -108,6 +110,25 @@ async fn main() {
                     Ok::<_, warp::Rejection>(warp::reply::with_status("Task added", warp::http::StatusCode::OK))
                 });
 
+            let validate_task = warp::path("validate_task")
+                .and(warp::post())
+                .and(warp::body::json())
+                .and(state_filter.clone())
+                .and_then(|task: Task, state: Arc<Mutex<SomeSharedState>>| async move {
+                    debug!("Received request to validate task: {:?}", task);
+                    {
+                        let state = state.lock().await;
+                        debug!("Validating task: {:?}", task);
+                        if let Err(e) = state.task_manager.update_task_status(&task, TaskStatus::Completed).await {
+                            error!("Failed to validate task via API: {:?}", e);
+                            return Err(warp::reject::custom(CustomError));
+                        }
+                        debug!("Task validated: {:?}", task);
+                    }
+                    info!("Task validated via API: {:?}", task);
+                    Ok::<_, warp::Rejection>(warp::reply::with_status("Task validated", warp::http::StatusCode::OK))
+                });
+
             let change_model = warp::path!("change_model" / String)
                 .and(warp::post())
                 .and(state_filter.clone())
@@ -128,7 +149,7 @@ async fn main() {
                     Ok::<_, warp::Rejection>(warp::reply::json(&status))
                 });
 
-            let routes = hello_route.or(get_tasks).or(add_task).or(change_model).or(status_route);
+            let routes = hello_route.or(get_tasks).or(add_task).or(validate_task).or(change_model).or(status_route);
 
             // Combine routes and serve
             warp::serve(routes)
@@ -137,16 +158,10 @@ async fn main() {
         });
     });
 
-    // Start the subconscious process
-    tokio::spawn(async move {
-        loop {
-            subconscious.run().await;
-            tokio::time::sleep(tokio::time::Duration::from_secs(60)).await; // Adjust the duration as needed
-        }
-    });
-
     // Start the core loop
-    core_loop(task_manager, llm_client).await;
+    tokio::spawn(async move {
+        core_loop(subconscious).await;
+    });
 
     // Wait for the API thread to finish (if needed)
     api_thread.join().unwrap();

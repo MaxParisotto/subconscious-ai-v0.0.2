@@ -1,10 +1,10 @@
-use crate::task_manager::{Task, TaskManager};
+use crate::task_manager::{TaskManager, Task, TaskStatus};
 use crate::llm_client::LLMClient;
-use log::{info, error};
+use log::info;
 
 pub struct Subconscious {
-    task_manager: TaskManager,
-    llm_client: LLMClient,
+    pub task_manager: TaskManager,
+    pub llm_client: LLMClient,
 }
 
 impl Subconscious {
@@ -12,23 +12,21 @@ impl Subconscious {
         Subconscious { task_manager, llm_client }
     }
 
-    pub async fn run(&self) {
-        // Add routine tasks here
+    pub async fn add_routine_task(&self) -> Result<(), Box<dyn std::error::Error>> {
         let routine_task = Task {
             description: "Routine check".to_string(),
             action: "Perform routine check".to_string(),
+            status: TaskStatus::Pending,
+            is_permanent: false,
         };
 
-        if let Err(e) = self.task_manager.add_task(routine_task).await {
-            error!("Failed to add routine task: {:?}", e);
-        } else {
-            info!("Routine task added.");
-        }
+        self.task_manager.add_task(routine_task).await?;
+        info!("Routine task added.");
+        Ok(())
+    }
 
-        // Example of using the llm_client
-        match self.llm_client.interpret_input("Example prompt").await {
-            Ok(response) => info!("LLM response: {}", response),
-            Err(e) => error!("Error getting LLM response: {}", e),
-        }
+    pub async fn process_tasks(&self) {
+        info!("Processing tasks...");
+        self.task_manager.execute_tasks().await;
     }
 }

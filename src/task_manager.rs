@@ -9,6 +9,15 @@ use log::{info, error, debug};
 pub struct Task {
     pub description: String,
     pub action: String, // The action to be performed, which can be interpreted by LLM
+    pub status: TaskStatus,
+    pub is_permanent: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+pub enum TaskStatus {
+    Pending,
+    InProgress,
+    Completed,
 }
 
 #[derive(Clone, Debug)]
@@ -33,16 +42,30 @@ impl TaskManager {
         Ok(())
     }
 
+    pub async fn update_task_status(&self, task: &Task, new_status: TaskStatus) -> Result<(), redis::RedisError> {
+        let mut con = self.redis_client.lock().await.get_multiplexed_async_connection().await?;
+        let tasks_json: Vec<String> = con.lrange("tasks", 0, -1).await?;
+        for (i, task_json) in tasks_json.iter().enumerate() {
+            let mut existing_task: Task = serde_json::from_str(task_json).unwrap();
+            if existing_task.description == task.description && existing_task.action == task.action {
+                existing_task.status = new_status;
+                let updated_task_json = serde_json::to_string(&existing_task).unwrap();
+                con.lset("tasks", i as isize, updated_task_json).await?;
+                info!("Updated task status in Redis: {:?}", existing_task);
+                return Ok(());
+            }
+        }
+        Err(redis::RedisError::from((redis::ErrorKind::IoError, "Task not found")))
+    }
+
     pub async fn execute_tasks(&self) {
-        match self.redis_client.lock().await.get_multiplexed_async_connection().await {
-            Ok(mut con) => {
-                while let Some(task_json) = con.lpop::<_, Option<String>>("tasks", None).await.unwrap() {
-                    let task: Task = serde_json::from_str(&task_json).unwrap();
-                    debug!("Executing task: {:?}", task);
-                    // Here you would process the task, possibly using the LLM
-                }
-            },
-            Err(e) => error!("Failed to get Redis connection: {:?}", e),
+        let mut con = self.redis_client.lock().await.get_multiplexed_async_connection().await.unwrap();
+        while let Some(task_json) = con.lpop::<_, Option<String>>("tasks", None).await.unwrap() {
+            let task: Task = serde_json::from_str(&task_json).unwrap();
+            if task.status == TaskStatus::Pending {
+                debug!("Executing task: {:?}", task);
+                // Here you would process the task, possibly using the LLM
+            }
         }
     }
 
