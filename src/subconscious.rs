@@ -1,6 +1,7 @@
 use crate::task_manager::{Task, TaskManager, TaskStatus};
 use crate::llm_client::LLMClient;
 use std::collections::VecDeque;
+use log::info;
 
 pub struct Subconscious {
     pub task_manager: TaskManager,
@@ -64,5 +65,10 @@ impl Subconscious {
 
     pub fn recall_long_term_memory(&self) -> Vec<String> {
         self.long_term_memory.clone()
+    }
+
+    pub fn print_memories(&self) {
+        info!("Short-term memory: {:?}", self.recall_short_term_memory());
+        info!("Long-term memory: {:?}", self.recall_long_term_memory());
     }
 }

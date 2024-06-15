@@ -57,6 +57,9 @@ pub async fn core_loop(subconscious: Arc<Mutex<Subconscious>>) {
                     ongoing_task_descriptions
                 )
             );
+
+            // Print memories
+            subconscious.print_memories();
         }
     });
 
