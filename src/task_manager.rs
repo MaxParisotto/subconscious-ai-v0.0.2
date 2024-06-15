@@ -37,9 +37,9 @@ impl TaskManager {
     pub async fn add_task(&self, task: Task) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let serialized_task = serde_json::to_string(&task)?;
         let mut con = self.redis_client.lock().await.get_multiplexed_async_connection().await?;
-        con.lpush("tasks", serialized_task.clone()).await?; // Clone here
+        con.lpush("tasks", serialized_task.clone()).await?;
         if task.is_permanent {
-            con.lpush("persistent_tasks", serialized_task).await?; // Use cloned value
+            con.lpush("persistent_tasks", serialized_task).await?;
         }
         Ok(())
     }
@@ -65,9 +65,9 @@ impl TaskManager {
     }
 
     pub async fn execute_tasks(&self, llm_client: &LLMClient) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        let mut con = self.redis_client.lock().await.get_multiplexed_async_connection().await?;
-        while let Some(task_json) = con.lpop::<_, Option<String>>("tasks", None).await? {
-            let task: Task = serde_json::from_str(&task_json)?;
+        let mut con = self.redis_client.lock().await.get_multiplexed_async_connection().await.unwrap();
+        while let Some(task_json) = con.lpop::<_, Option<String>>("tasks", None).await.unwrap() {
+            let task: Task = serde_json::from_str(&task_json).unwrap();
             if task.status == TaskStatus::Pending {
                 debug!("Executing task: {:?}", task);
 
@@ -75,7 +75,7 @@ impl TaskManager {
                     Ok(result) => {
                         info!("Task processed with result: {}", result);
                         // Store result in Redis
-                        let _: () = con.set(&task.description, result).await?;
+                        let _: () = con.set(&task.description, result).await.unwrap();
                         match self.update_task_status(&task, TaskStatus::Completed).await {
                             Ok(_) => info!("Task completed and status updated: {:?}", task),
                             Err(e) => error!("Failed to update task status: {:?}", e),
@@ -107,22 +107,23 @@ impl TaskManager {
         tasks
     }
 
-    pub async fn get_completed_tasks(&self) -> Vec<Task> {
-        match self.redis_client.lock().await.get_multiplexed_async_connection().await {
-            Ok(mut con) => {
-                let tasks_json: Vec<String> = con.lrange("completed_tasks", 0, -1).await.unwrap();
-                debug!("Retrieved completed tasks JSON from Redis: {:?}", tasks_json);
-                let tasks: Vec<Task> = tasks_json.into_iter().map(|task_json| {
-                    let task: Task = serde_json::from_str(&task_json).unwrap();
-                    task
-                }).collect();
-                debug!("Deserialized completed tasks: {:?}", tasks);
-                tasks
-            },
-            Err(e) => {
-                error!("Failed to get Redis connection: {:?}", e);
-                vec![]
-            },
-        }
-    }
+    // Commenting out unused method to suppress warning
+    // pub async fn get_completed_tasks(&self) -> Vec<Task> {
+    //     match self.redis_client.lock().await.get_multiplexed_async_connection().await {
+    //         Ok(mut con) => {
+    //             let tasks_json: Vec<String> = con.lrange("completed_tasks", 0, -1).await.unwrap();
+    //             debug!("Retrieved completed tasks JSON from Redis: {:?}", tasks_json);
+    //             let tasks: Vec<Task> = tasks_json.into_iter().map(|task_json| {
+    //                 let task: Task = serde_json::from_str(&task_json).unwrap();
+    //                 task
+    //             }).collect();
+    //             debug!("Deserialized completed tasks: {:?}", tasks);
+    //             tasks
+    //         },
+    //         Err(e) => {
+    //             error!("Failed to get Redis connection: {:?}", e);
+    //             vec![]
+    //         },
+    //     }
+    // }
 }

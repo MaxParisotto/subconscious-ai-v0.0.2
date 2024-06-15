@@ -34,6 +34,12 @@ impl Subconscious {
 
     pub async fn process_tasks(&mut self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         self.task_manager.execute_tasks(&self.llm_client).await?;
+        let tasks = self.task_manager.get_tasks().await;
+        for task in tasks {
+            if task.status == TaskStatus::Completed {
+                self.learn_from_task(&task);
+            }
+        }
         Ok(())
     }
 
