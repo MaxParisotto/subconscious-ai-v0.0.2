@@ -51,30 +51,6 @@ impl LLMClient {
         }
     }
 
-    pub async fn interpret_input(&self, input: &str) -> Result<String, Box<dyn Error>> {
-        let payload = LLMInput {
-            model: "llama3".to_string(),
-            prompt: input.to_string(),
-            stream: false,
-        };
-
-        println!("Sending request to LLM endpoint: {}", &self.url);
-        println!("Payload: {:?}", &payload);
-
-        let response = self.client.post(&self.url)
-            .json(&payload)
-            .send()
-            .await?;
-
-        if response.status().is_success() {
-            let llm_output = response.json::<LLMOutput>().await?;
-            println!("LLM response: {}", llm_output.response);
-            Ok(llm_output.response)
-        } else {
-            Err(format!("LLM endpoint returned status: {} - {}", response.status(), response.text().await?).into())
-        }
-    }
-
     pub async fn check_llm_connection(&self) -> Result<(), Box<dyn Error>> {
         let show_url = self.url.replace("generate", "show");
         println!("Checking LLM connection to: {}", &show_url);

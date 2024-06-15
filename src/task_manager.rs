@@ -48,10 +48,16 @@ impl TaskManager {
         for (i, task_json) in tasks_json.iter().enumerate() {
             let mut existing_task: Task = serde_json::from_str(task_json).unwrap();
             if existing_task.description == task.description && existing_task.action == task.action {
-                existing_task.status = new_status;
+                existing_task.status = new_status.clone();
                 let updated_task_json = serde_json::to_string(&existing_task).unwrap();
-                con.lset("tasks", i as isize, updated_task_json).await?;
+                con.lset("tasks", i as isize, updated_task_json.clone()).await?;
                 info!("Updated task status in Redis: {:?}", existing_task);
+
+                if new_status == TaskStatus::Completed && task.is_permanent {
+                    con.rpush("completed_tasks", updated_task_json).await?;
+                    info!("Task stored as permanent in Redis: {:?}", existing_task);
+                }
+
                 return Ok(());
             }
         }
@@ -65,6 +71,7 @@ impl TaskManager {
             if task.status == TaskStatus::Pending {
                 debug!("Executing task: {:?}", task);
                 // Here you would process the task, possibly using the LLM
+                self.update_task_status(&task, TaskStatus::Completed).await.unwrap();
             }
         }
     }
@@ -85,6 +92,25 @@ impl TaskManager {
                     task
                 }).collect();
                 debug!("Deserialized tasks: {:?}", tasks);
+                tasks
+            },
+            Err(e) => {
+                error!("Failed to get Redis connection: {:?}", e);
+                vec![]
+            },
+        }
+    }
+
+    pub async fn get_completed_tasks(&self) -> Vec<Task> {
+        match self.redis_client.lock().await.get_multiplexed_async_connection().await {
+            Ok(mut con) => {
+                let tasks_json: Vec<String> = con.lrange("completed_tasks", 0, -1).await.unwrap();
+                debug!("Retrieved completed tasks JSON from Redis: {:?}", tasks_json);
+                let tasks: Vec<Task> = tasks_json.into_iter().map(|task_json| {
+                    let task: Task = serde_json::from_str(&task_json).unwrap();
+                    task
+                }).collect();
+                debug!("Deserialized completed tasks: {:?}", tasks);
                 tasks
             },
             Err(e) => {

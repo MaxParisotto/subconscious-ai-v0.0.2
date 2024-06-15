@@ -3,7 +3,7 @@ use crate::task_manager::{Task, TaskManager, TaskStatus};
 use crate::core_loop::core_loop;
 use crate::subconscious::Subconscious;
 use crate::llm_client::LLMClient;
-use config::Config;
+use config::{Config, Value, Map};
 use std::sync::Arc;
 use std::thread;
 use warp::Filter;
@@ -54,16 +54,45 @@ async fn main() {
     let subconscious = Arc::new(Mutex::new(Subconscious::new(task_manager.clone(), llm_client.clone())));
 
     // Add the persistent task at startup
-    let persistent_task = Task {
-        description: "Check actions against Asimov's 3 laws of robotics".to_string(),
-        action: "check_asimov_laws".to_string(),
-        status: TaskStatus::Pending,
-        is_permanent: true,
-    };
-    if let Err(e) = task_manager.add_task(persistent_task.clone()).await {
-        error!("Failed to add persistent task: {:?}", e);
-    } else {
-        info!("Added persistent task: {:?}", persistent_task);
+    let persistent_tasks = vec![
+        Task {
+            description: "Self Health Check".to_string(),
+            action: "check_status".to_string(),
+            status: TaskStatus::Pending,
+            is_permanent: true,
+        },
+        Task {
+            description: "Read from Redis".to_string(),
+            action: "display_redis_data".to_string(),
+            status: TaskStatus::Pending,
+            is_permanent: true,
+        },
+        Task {
+            description: "Start LLM interaction".to_string(),
+            action: "start_llm_communications".to_string(),
+            status: TaskStatus::Pending,
+            is_permanent: true,
+        },
+        Task {
+            description: "Log Analysis".to_string(),
+            action: "comment_last_logs".to_string(),
+            status: TaskStatus::Pending,
+            is_permanent: true,
+        },
+        Task {
+            description: "Self analysys and new tasks".to_string(),
+            action: "take_improvement_actions".to_string(),
+            status: TaskStatus::Pending,
+            is_permanent: true,
+        }
+    ];
+
+    for task in persistent_tasks {
+        if let Err(e) = task_manager.add_task(task.clone()).await {
+            error!("Failed to add persistent task: {:?}", e);
+        } else {
+            info!("Added persistent task: {:?}", task);
+        }
     }
 
     // Shared state for API server

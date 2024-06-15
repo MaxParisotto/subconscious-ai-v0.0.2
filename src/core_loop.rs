@@ -2,8 +2,8 @@ use crate::subconscious::Subconscious;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tokio::time::{interval, Duration, Instant};
-use colored::*;
 use log::{info, debug};
+use colored::*;
 
 pub async fn core_loop(subconscious: Arc<Mutex<Subconscious>>) {
     let subconscious_for_interval = Arc::clone(&subconscious);
@@ -44,12 +44,17 @@ pub async fn core_loop(subconscious: Arc<Mutex<Subconscious>>) {
 
             let elapsed = start_time.elapsed().as_secs();
             let iterations_per_second = elapsed as f64 / 10.0;
+
+            let ongoing_tasks = subconscious.task_manager.get_tasks().await;
+            let ongoing_task_descriptions: Vec<String> = ongoing_tasks.iter().map(|task| task.description.clone()).collect();
+
             println!(
                 "{}",
                 format!(
-                    "Time running: {} seconds, Iterations per second: {:.2}",
+                    "Time running: {} seconds, Iterations per second: {:.2}, Ongoing tasks: {:?}",
                     elapsed.to_string().purple(),
-                    iterations_per_second.to_string().blue()
+                    iterations_per_second.to_string().blue(),
+                    ongoing_task_descriptions
                 )
             );
         }
