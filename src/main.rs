@@ -227,14 +227,15 @@ async fn main() {
     // Wait for the API thread to finish (if needed)
     api_thread.join().unwrap();
 }
-
 // Example shared state struct
 #[derive(Debug)]
 struct SomeSharedState {
     task_manager: TaskManager,
     llm_client: LLMClient,
+    #[allow(dead_code)] // Add this line to suppress the warning
     subconscious: Arc<Mutex<Subconscious>>,
 }
+
 
 impl SomeSharedState {
     fn new(task_manager: TaskManager, llm_client: LLMClient, subconscious: Arc<Mutex<Subconscious>>) -> Self {
