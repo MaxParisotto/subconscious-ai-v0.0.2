@@ -3,7 +3,7 @@ use crate::task_manager::{Task, TaskManager, TaskStatus};
 use crate::core_loop::core_loop;
 use crate::subconscious::Subconscious;
 use crate::llm_client::LLMClient;
-use config::{Config};
+use config::Config;
 use std::sync::Arc;
 use std::thread;
 use warp::Filter;
@@ -13,7 +13,6 @@ use std::fs::OpenOptions;
 use log::LevelFilter;
 use env_logger::{Builder, Target};
 use warp::reject::Reject;
-use warp::Reply;
 use serde::Deserialize;
 
 mod task_manager;
@@ -27,7 +26,7 @@ struct CustomError;
 impl Reject for CustomError {}
 
 #[derive(Deserialize)]
-struct QueryInput {
+struct Query {
     query: String,
 }
 
@@ -109,7 +108,7 @@ async fn main() {
     }
 
     // Shared state for API server
-    let state = Arc::new(Mutex::new(SomeSharedState::new(task_manager.clone(), llm_client.clone())));
+    let state = Arc::new(Mutex::new(SomeSharedState::new(task_manager.clone(), llm_client.clone(), subconscious.clone())));
 
     // Clone the state for API thread
     let api_state = state.clone();
@@ -185,13 +184,17 @@ async fn main() {
                 .and(warp::post())
                 .and(warp::body::json())
                 .and(state_filter.clone())
-                .and_then(|query: QueryInput, state: Arc<Mutex<SomeSharedState>>| async move {
+                .and_then(|query: Query, state: Arc<Mutex<SomeSharedState>>| async move {
+                    debug!("Received query: {}", query.query);
                     let state = state.lock().await;
                     let tasks = state.task_manager.get_tasks().await;
                     match state.llm_client.process_query(&query.query, tasks).await {
-                        Ok(response) => Ok::<_, warp::Rejection>(warp::reply::json(&response)),
+                        Ok(response) => {
+                            info!("LLM response: {}", response);
+                            Ok::<_, warp::Rejection>(warp::reply::json(&response))
+                        }
                         Err(e) => {
-                            error!("Failed to process query via LLM: {:?}", e);
+                            error!("Failed to process query with LLM: {:?}", e);
                             Err(warp::reject::custom(CustomError))
                         }
                     }
@@ -224,21 +227,22 @@ async fn main() {
     // Wait for the API thread to finish (if needed)
     api_thread.join().unwrap();
 }
-
 // Example shared state struct
 #[derive(Debug)]
 struct SomeSharedState {
     task_manager: TaskManager,
     llm_client: LLMClient,
-    // Add your fields here
+    #[allow(dead_code)] // Add this line to suppress the warning
+    subconscious: Arc<Mutex<Subconscious>>,
 }
 
+
 impl SomeSharedState {
-    fn new(task_manager: TaskManager, llm_client: LLMClient) -> Self {
+    fn new(task_manager: TaskManager, llm_client: LLMClient, subconscious: Arc<Mutex<Subconscious>>) -> Self {
         SomeSharedState {
             task_manager,
             llm_client,
-            // Initialize fields
+            subconscious,
         }
     }
 

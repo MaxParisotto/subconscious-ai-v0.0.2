@@ -37,7 +37,10 @@ impl TaskManager {
     pub async fn add_task(&self, task: Task) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let serialized_task = serde_json::to_string(&task)?;
         let mut con = self.redis_client.lock().await.get_multiplexed_async_connection().await?;
-        con.lpush("tasks", serialized_task).await?;
+        con.lpush("tasks", serialized_task.clone()).await?;
+        if task.is_permanent {
+            con.lpush("persistent_tasks", serialized_task).await?;
+        }
         Ok(())
     }
 
@@ -61,7 +64,7 @@ impl TaskManager {
         Ok(())
     }
 
-    pub async fn execute_tasks(&self, llm_client: &LLMClient) {
+    pub async fn execute_tasks(&self, llm_client: &LLMClient) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let mut con = self.redis_client.lock().await.get_multiplexed_async_connection().await.unwrap();
         while let Some(task_json) = con.lpop::<_, Option<String>>("tasks", None).await.unwrap() {
             let task: Task = serde_json::from_str(&task_json).unwrap();
@@ -82,6 +85,7 @@ impl TaskManager {
                 }
             }
         }
+        Ok(())
     }
 
     pub async fn check_redis_connection(&self) -> Result<(), redis::RedisError> {
@@ -103,22 +107,23 @@ impl TaskManager {
         tasks
     }
 
-    pub async fn get_completed_tasks(&self) -> Vec<Task> {
-        match self.redis_client.lock().await.get_multiplexed_async_connection().await {
-            Ok(mut con) => {
-                let tasks_json: Vec<String> = con.lrange("completed_tasks", 0, -1).await.unwrap();
-                debug!("Retrieved completed tasks JSON from Redis: {:?}", tasks_json);
-                let tasks: Vec<Task> = tasks_json.into_iter().map(|task_json| {
-                    let task: Task = serde_json::from_str(&task_json).unwrap();
-                    task
-                }).collect();
-                debug!("Deserialized completed tasks: {:?}", tasks);
-                tasks
-            },
-            Err(e) => {
-                error!("Failed to get Redis connection: {:?}", e);
-                vec![]
-            },
-        }
-    }
+    // Commenting out unused method to suppress warning
+    // pub async fn get_completed_tasks(&self) -> Vec<Task> {
+    //     match self.redis_client.lock().await.get_multiplexed_async_connection().await {
+    //         Ok(mut con) => {
+    //             let tasks_json: Vec<String> = con.lrange("completed_tasks", 0, -1).await.unwrap();
+    //             debug!("Retrieved completed tasks JSON from Redis: {:?}", tasks_json);
+    //             let tasks: Vec<Task> = tasks_json.into_iter().map(|task_json| {
+    //                 let task: Task = serde_json::from_str(&task_json).unwrap();
+    //                 task
+    //             }).collect();
+    //             debug!("Deserialized completed tasks: {:?}", tasks);
+    //             tasks
+    //         },
+    //         Err(e) => {
+    //             error!("Failed to get Redis connection: {:?}", e);
+    //             vec![]
+    //         },
+    //     }
+    // }
 }
