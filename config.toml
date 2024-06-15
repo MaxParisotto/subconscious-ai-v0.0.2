@@ -3,7 +3,7 @@ url = "redis://192.168.0.34:6379"
 
 [llm]
 url = "http://192.168.1.72:11434/api/generate"
-model = "llama3-gradient:1048k"
+model = "llama3"
 
 [init-tasks]
 task1 = {name = "Self Health Check", action = "check_status"} 

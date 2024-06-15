@@ -23,7 +23,7 @@ impl Subconscious {
     pub fn add_to_short_term_memory(&mut self, entry: String) {
         if self.short_term_memory.len() == self.short_term_memory.capacity() {
             if let Some(removed) = self.short_term_memory.pop_front() {
-                self.long_term_memory.push(removed);
+                self.add_to_long_term_memory(removed);
             }
         }
         self.short_term_memory.push_back(entry);
