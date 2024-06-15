@@ -4,11 +4,12 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use log::{info, error, debug};
+use crate::llm_client::LLMClient;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Task {
     pub description: String,
-    pub action: String, // The action to be performed, which can be interpreted by LLM
+    pub action: String,
     pub status: TaskStatus,
     pub is_permanent: bool,
 }
@@ -33,14 +34,14 @@ impl TaskManager {
         }
     }
 
-    pub async fn add_task(&self, task: Task) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn add_task(&self, task: Task) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let serialized_task = serde_json::to_string(&task)?;
         let mut con = self.redis_client.lock().await.get_multiplexed_async_connection().await?;
         con.lpush("tasks", serialized_task).await?;
         Ok(())
     }
 
-    pub async fn update_task_status(&self, task: &Task, new_status: TaskStatus) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn update_task_status(&self, task: &Task, new_status: TaskStatus) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let mut con = self.redis_client.lock().await.get_multiplexed_async_connection().await?;
         let tasks_json: Vec<String> = con.lrange("tasks", 0, -1).await?;
         
@@ -60,16 +61,24 @@ impl TaskManager {
         Ok(())
     }
 
-    pub async fn execute_tasks(&self) {
+    pub async fn execute_tasks(&self, llm_client: &LLMClient) {
         let mut con = self.redis_client.lock().await.get_multiplexed_async_connection().await.unwrap();
         while let Some(task_json) = con.lpop::<_, Option<String>>("tasks", None).await.unwrap() {
             let task: Task = serde_json::from_str(&task_json).unwrap();
             if task.status == TaskStatus::Pending {
                 debug!("Executing task: {:?}", task);
-                // Here you would process the task, possibly using the LLM
-                match self.update_task_status(&task, TaskStatus::Completed).await {
-                    Ok(_) => info!("Task completed and status updated: {:?}", task),
-                    Err(e) => error!("Failed to update task status: {:?}", e),
+
+                match llm_client.process_task(&task).await {
+                    Ok(result) => {
+                        info!("Task processed with result: {}", result);
+                        // Store result in Redis
+                        let _: () = con.set(&task.description, result).await.unwrap();
+                        match self.update_task_status(&task, TaskStatus::Completed).await {
+                            Ok(_) => info!("Task completed and status updated: {:?}", task),
+                            Err(e) => error!("Failed to update task status: {:?}", e),
+                        }
+                    }
+                    Err(e) => error!("Failed to process task with LLM: {:?}", e),
                 }
             }
         }

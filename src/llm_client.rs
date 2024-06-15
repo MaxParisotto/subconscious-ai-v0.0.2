@@ -5,9 +5,9 @@ use std::error::Error;
 
 #[derive(Debug, Serialize)]
 struct LLMInput {
-   model: String,
-   prompt: String,
-   stream: bool,
+    model: String,
+    prompt: String,
+    stream: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -51,7 +51,7 @@ impl LLMClient {
         }
     }
 
-    pub async fn check_llm_connection(&self) -> Result<(), Box<dyn Error>> {
+    pub async fn check_llm_connection(&self) -> Result<(), Box<dyn Error + Send + Sync>> {
         let show_url = self.url.replace("generate", "show");
         println!("Checking LLM connection to: {}", &show_url);
 
@@ -80,5 +80,25 @@ impl LLMClient {
     pub fn change_model(&self, model: &str) {
         // Implementation to change the model
         println!("Changing model to {}", model);
+    }
+
+    pub async fn process_task(&self, task: &crate::task_manager::Task) -> Result<String, Box<dyn Error + Send + Sync>> {
+        let input = LLMInput {
+            model: "llama3".to_string(),
+            prompt: task.description.clone(),
+            stream: false,
+        };
+
+        let response = self.client.post(&self.url)
+            .json(&input)
+            .send()
+            .await?;
+
+        if response.status().is_success() {
+            let output = response.json::<LLMOutput>().await?;
+            Ok(output.response)
+        } else {
+            Err(format!("LLM processing failed: {} - {}", response.status(), response.text().await?).into())
+        }
     }
 }
