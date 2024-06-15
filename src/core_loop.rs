@@ -1,9 +1,26 @@
 use crate::subconscious::Subconscious;
+use crate::task_manager::TaskManager;
+use crate::llm_client::LLMClient;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tokio::time::{interval, Duration, Instant};
 use log::{info, debug};
 use colored::*;
+use crate::task_manager::TaskStatus;
+
+pub async fn status_check(task_manager: &TaskManager, llm_client: &LLMClient, start_time: std::time::Instant) {
+    let redis_status = task_manager.check_redis_connection().await.is_ok();
+    info!("Redis connection: {}", if redis_status { "OK" } else { "Failed" });
+
+    let llm_status = llm_client.check_llm_connection().await.is_ok();
+    info!("LLM connection: {}", if llm_status { "OK" } else { "Failed" });
+
+    let time_running = start_time.elapsed().as_secs();
+    let tasks = task_manager.get_tasks().await;
+    let ongoing_tasks: Vec<String> = tasks.into_iter().filter(|task| task.status == TaskStatus::Pending).map(|task| task.description.clone()).collect();
+
+    info!("Time running: {} seconds, Ongoing tasks: {:?}", time_running, ongoing_tasks);
+}
 
 pub async fn core_loop(subconscious: Arc<Mutex<Subconscious>>) {
     let subconscious_for_interval = Arc::clone(&subconscious);

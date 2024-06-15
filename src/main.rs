@@ -80,7 +80,7 @@ async fn main() {
             is_permanent: true,
         },
         Task {
-            description: "Self analysys and new tasks".to_string(),
+            description: "Self analysis and new tasks".to_string(),
             action: "take_improvement_actions".to_string(),
             status: TaskStatus::Pending,
             is_permanent: true,

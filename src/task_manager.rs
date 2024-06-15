@@ -33,35 +33,31 @@ impl TaskManager {
         }
     }
 
-    pub async fn add_task(&self, task: Task) -> Result<(), redis::RedisError> {
+    pub async fn add_task(&self, task: Task) -> Result<(), Box<dyn std::error::Error>> {
+        let serialized_task = serde_json::to_string(&task)?;
         let mut con = self.redis_client.lock().await.get_multiplexed_async_connection().await?;
-        let task_json = serde_json::to_string(&task).unwrap();
-        debug!("Serialized Task: {}", task_json);
-        con.rpush("tasks", task_json).await?;
-        info!("Task successfully added to Redis: {:?}", task);
+        con.lpush("tasks", serialized_task).await?;
         Ok(())
     }
 
-    pub async fn update_task_status(&self, task: &Task, new_status: TaskStatus) -> Result<(), redis::RedisError> {
+    pub async fn update_task_status(&self, task: &Task, new_status: TaskStatus) -> Result<(), Box<dyn std::error::Error>> {
         let mut con = self.redis_client.lock().await.get_multiplexed_async_connection().await?;
         let tasks_json: Vec<String> = con.lrange("tasks", 0, -1).await?;
-        for (i, task_json) in tasks_json.iter().enumerate() {
-            let mut existing_task: Task = serde_json::from_str(task_json).unwrap();
-            if existing_task.description == task.description && existing_task.action == task.action {
-                existing_task.status = new_status.clone();
-                let updated_task_json = serde_json::to_string(&existing_task).unwrap();
-                con.lset("tasks", i as isize, updated_task_json.clone()).await?;
-                info!("Updated task status in Redis: {:?}", existing_task);
-
-                if new_status == TaskStatus::Completed && task.is_permanent {
-                    con.rpush("completed_tasks", updated_task_json).await?;
-                    info!("Task stored as permanent in Redis: {:?}", existing_task);
-                }
-
-                return Ok(());
+        
+        let mut updated_tasks = Vec::new();
+        for task_json in tasks_json {
+            let mut task_in_list: Task = serde_json::from_str(&task_json)?;
+            if task_in_list.description == task.description && task_in_list.action == task.action {
+                task_in_list.status = new_status.clone();
             }
+            updated_tasks.push(serde_json::to_string(&task_in_list)?);
         }
-        Err(redis::RedisError::from((redis::ErrorKind::IoError, "Task not found")))
+        
+        con.del("tasks").await?;
+        for updated_task in updated_tasks {
+            con.rpush("tasks", updated_task).await?;
+        }
+        Ok(())
     }
 
     pub async fn execute_tasks(&self) {
@@ -86,22 +82,16 @@ impl TaskManager {
     }
 
     pub async fn get_tasks(&self) -> Vec<Task> {
-        match self.redis_client.lock().await.get_multiplexed_async_connection().await {
-            Ok(mut con) => {
-                let tasks_json: Vec<String> = con.lrange("tasks", 0, -1).await.unwrap();
-                debug!("Retrieved tasks JSON from Redis: {:?}", tasks_json);
-                let tasks: Vec<Task> = tasks_json.into_iter().map(|task_json| {
-                    let task: Task = serde_json::from_str(&task_json).unwrap();
-                    task
-                }).collect();
-                debug!("Deserialized tasks: {:?}", tasks);
-                tasks
-            },
-            Err(e) => {
-                error!("Failed to get Redis connection: {:?}", e);
-                vec![]
-            },
+        let mut con = self.redis_client.lock().await.get_multiplexed_async_connection().await.unwrap();
+        let tasks_json: Vec<String> = con.lrange("tasks", 0, -1).await.unwrap_or_default();
+        
+        let mut tasks = Vec::new();
+        for task_json in tasks_json {
+            if let Ok(task) = serde_json::from_str::<Task>(&task_json) {
+                tasks.push(task);
+            }
         }
+        tasks
     }
 
     pub async fn get_completed_tasks(&self) -> Vec<Task> {
