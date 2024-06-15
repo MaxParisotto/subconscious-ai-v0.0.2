@@ -3,7 +3,7 @@ use crate::task_manager::{Task, TaskManager, TaskStatus};
 use crate::core_loop::core_loop;
 use crate::subconscious::Subconscious;
 use crate::llm_client::LLMClient;
-use config::{Config, Value, Map};
+use config::{Config};
 use std::sync::Arc;
 use std::thread;
 use warp::Filter;

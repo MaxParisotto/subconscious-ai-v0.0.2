@@ -4,7 +4,7 @@ use crate::llm_client::LLMClient;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tokio::time::{interval, Duration, Instant};
-use log::{info, debug};
+use log::{info};
 use colored::*;
 use crate::task_manager::TaskStatus;
 
