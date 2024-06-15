@@ -71,7 +71,10 @@ impl TaskManager {
             if task.status == TaskStatus::Pending {
                 debug!("Executing task: {:?}", task);
                 // Here you would process the task, possibly using the LLM
-                self.update_task_status(&task, TaskStatus::Completed).await.unwrap();
+                match self.update_task_status(&task, TaskStatus::Completed).await {
+                    Ok(_) => info!("Task completed and status updated: {:?}", task),
+                    Err(e) => error!("Failed to update task status: {:?}", e),
+                }
             }
         }
     }
