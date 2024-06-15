@@ -3,6 +3,7 @@ use crate::llm_client::LLMClient;
 use std::collections::VecDeque;
 use log::info;
 
+#[derive(Debug)] // Adding Debug trait here
 pub struct Subconscious {
     pub task_manager: TaskManager,
     pub llm_client: LLMClient,
