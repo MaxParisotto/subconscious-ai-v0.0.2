@@ -13,8 +13,6 @@ use std::fs::OpenOptions;
 use log::LevelFilter;
 use env_logger::{Builder, Target};
 use warp::reject::Reject;
-use warp::Reply;
-use serde::Deserialize;
 
 mod task_manager;
 mod core_loop;
@@ -25,11 +23,6 @@ mod llm_client;
 struct CustomError;
 
 impl Reject for CustomError {}
-
-#[derive(Deserialize)]
-struct QueryInput {
-    query: String,
-}
 
 #[main]
 async fn main() {
@@ -181,25 +174,9 @@ async fn main() {
                     Ok::<_, warp::Rejection>(warp::reply::json(&format!("Model changed to: {}", model)))
                 });
 
-            let ask_llm = warp::path("ask_llm")
-                .and(warp::post())
-                .and(warp::body::json())
-                .and(state_filter.clone())
-                .and_then(|query: QueryInput, state: Arc<Mutex<SomeSharedState>>| async move {
-                    let state = state.lock().await;
-                    let tasks = state.task_manager.get_tasks().await;
-                    match state.llm_client.process_query(&query.query, tasks).await {
-                        Ok(response) => Ok::<_, warp::Rejection>(warp::reply::json(&response)),
-                        Err(e) => {
-                            error!("Failed to process query via LLM: {:?}", e);
-                            Err(warp::reject::custom(CustomError))
-                        }
-                    }
-                });
-
             let status_route = warp::path("status")
                 .and(warp::get())
-                .and(state_filter)
+                .and(state_filter.clone())
                 .and_then(|state: Arc<Mutex<SomeSharedState>>| async move {
                     let state = state.lock().await;
                     let status = state.get_status();
@@ -207,7 +184,24 @@ async fn main() {
                     Ok::<_, warp::Rejection>(warp::reply::json(&status))
                 });
 
-            let routes = hello_route.or(get_tasks).or(add_task).or(validate_task).or(change_model).or(ask_llm).or(status_route);
+            let ask_llm = warp::path("ask_llm")
+                .and(warp::post())
+                .and(warp::body::json())
+                .and(state_filter.clone())
+                .and_then(|query: String, state: Arc<Mutex<SomeSharedState>>| async move {
+                    debug!("Received query for LLM: {:?}", query);
+                    let state = state.lock().await;
+                    let tasks = state.task_manager.get_tasks().await;
+                    match state.llm_client.process_query(&query, tasks).await {
+                        Ok(response) => Ok::<_, warp::Rejection>(warp::reply::json(&response)),
+                        Err(e) => {
+                            error!("Failed to process query with LLM: {:?}", e);
+                            Err(warp::reject::custom(CustomError))
+                        }
+                    }
+                });
+
+            let routes = hello_route.or(get_tasks).or(add_task).or(validate_task).or(change_model).or(status_route).or(ask_llm);
 
             // Combine routes and serve
             warp::serve(routes)

@@ -37,7 +37,10 @@ impl TaskManager {
     pub async fn add_task(&self, task: Task) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let serialized_task = serde_json::to_string(&task)?;
         let mut con = self.redis_client.lock().await.get_multiplexed_async_connection().await?;
-        con.lpush("tasks", serialized_task).await?;
+        con.lpush("tasks", serialized_task.clone()).await?; // Clone here
+        if task.is_permanent {
+            con.lpush("persistent_tasks", serialized_task).await?; // Use cloned value
+        }
         Ok(())
     }
 
@@ -61,10 +64,10 @@ impl TaskManager {
         Ok(())
     }
 
-    pub async fn execute_tasks(&self, llm_client: &LLMClient) {
-        let mut con = self.redis_client.lock().await.get_multiplexed_async_connection().await.unwrap();
-        while let Some(task_json) = con.lpop::<_, Option<String>>("tasks", None).await.unwrap() {
-            let task: Task = serde_json::from_str(&task_json).unwrap();
+    pub async fn execute_tasks(&self, llm_client: &LLMClient) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let mut con = self.redis_client.lock().await.get_multiplexed_async_connection().await?;
+        while let Some(task_json) = con.lpop::<_, Option<String>>("tasks", None).await? {
+            let task: Task = serde_json::from_str(&task_json)?;
             if task.status == TaskStatus::Pending {
                 debug!("Executing task: {:?}", task);
 
@@ -72,7 +75,7 @@ impl TaskManager {
                     Ok(result) => {
                         info!("Task processed with result: {}", result);
                         // Store result in Redis
-                        let _: () = con.set(&task.description, result).await.unwrap();
+                        let _: () = con.set(&task.description, result).await?;
                         match self.update_task_status(&task, TaskStatus::Completed).await {
                             Ok(_) => info!("Task completed and status updated: {:?}", task),
                             Err(e) => error!("Failed to update task status: {:?}", e),
@@ -82,6 +85,7 @@ impl TaskManager {
                 }
             }
         }
+        Ok(())
     }
 
     pub async fn check_redis_connection(&self) -> Result<(), redis::RedisError> {
